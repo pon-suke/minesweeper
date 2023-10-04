@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Minesweeper</title>
+    <style>
+        table {
+            border-collapse: collapse;
+        }
+
+        td {
+            width: 30px;
+            height: 30px;
+            border: 1px solid gray;
+            text-align: center;
+            vertical-align: middle;
+            font-weight: bold;
+        }
+
+        .hidden {
+            background-color: lightgray;
+        }
+
+        .flag {
+            background-color: yellow;
+        }
+
+        .mine {
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <table id="board"></table>
+    <div id="status" style="font-size: 24px; margin-top: 20px;"></div>
+    <button id="retry" style="display:none;" onclick="init()">Retry</button>
+
+    <script>
+        const SIZE = 10;
+        const MINES = 15;
+        let board = [];
+        let revealedCount = 0;
+        let flagCount = 0;
+
+        /**
+        * 多次元配列を作成する関数
+        * @param {Array} dimensions 各次元のサイズを示す配列（例: [2, 3] は2x3の2次元配列を作成）
+        * @param {any} initial 初期値（省略可能）
+        * @returns {Array} 作成された多次元配列
+        */
+        function createMultiDimensionalArray(dimensions, initial = null) {
+            // 基底ケース: dimensionsが空になった場合、初期値を返す
+            if (dimensions.length === 0) {
+                return initial;
+            }
+
+            // 最初の次元を取得し、その次元のサイズの配列を作成
+            const dim = dimensions[0];
+            const rest = dimensions.slice(1);
+
+            // それぞれの要素に対して再帰的に次の次元の配列を作成
+            const arr = [];
+            for (let i = 0; i < dim; i++) {
+                arr.push(createMultiDimensionalArray(rest, initial));
+            }
+            return arr;
+        }
+
+        function init() {
+            board = createMultiDimensionalArray([10,10]);
+            revealedCount = 0;
+            flagCount = 0;
+            document.getElementById('status').textContent = '';
+            document.getElementById('retry').style.display = 'none';
+
+            //arraytest = createMultiDimensionalArray([10,10], 0);
+            //console.log(arraytest);
+
+            for (let i = 0; i < SIZE; i++) {
+                for (let j = 0; j < SIZE; j++){
+                    board[i][j] = { mine: false, revealed: false, flag: false, count: 0 };
+                }
+            }
+
+            for (let i = 0; i < MINES; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * SIZE);
+                    y = Math.floor(Math.random() * SIZE);
+                } while (board[y][x].mine);
+                board[y][x] = { mine: true, revealed: false, flag: false, count: 0 };
+            }
+
+            for (let i = 0; i < SIZE * SIZE; i++) {
+                let x = Math.trunc(i / SIZE), y = Math.trunc(i % SIZE);
+                if (board[y][x].mine === false) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            if (0 <= x + dx && x + dx < SIZE && 0 <= y + dy && y + dy < SIZE) {
+                                if (board[y + dy][x + dx].mine === true) {
+                                    //console.log("x=" + x + ",y=" + y + ",dx=" + dx + ",dy=" + dy + ",mine=" + board[y + dy][x + dx].mine);
+                                    board[y][x].count++;
+                                }
+                            }
+                        }
+                    }
+                }
+                //console.log("board[" + y + "][" + x + "].count=" + board[y][x].count);
+                //console.log(i);
+            }
+            // for (let i = 0; i < SIZE * SIZE; i++) {
+            //     let x = Math.trunc(i / SIZE), y = Math.trunc(i % SIZE);
+            //     console.log("board[" + y + "][" + x + "].count=" + board[y][x].count);
+            // }
+
+            drawBoard();
+        }
+
+        function drawBoard() {
+            const table = document.getElementById('board');
+            table.innerHTML = '';
+
+            for (let y = 0; y < SIZE; y++) {
+                const tr = document.createElement('tr');
+                for (let x = 0; x < SIZE; x++) {
+                    const td = document.createElement('td');
+                    td.classList.add('hidden');
+                    td.oncontextmenu = function (e) {
+                        e.preventDefault();
+                        toggleFlag(x, y);
+                    };
+                    td.onclick = function () {
+                        reveal(x, y);
+                    };
+                    tr.appendChild(td);
+                }
+                table.appendChild(tr);
+            }
+        }
+
+        function toggleFlag(x, y) {
+            if (board[y][x].revealed) return;
+            board[y][x].flag = !board[y][x].flag;
+            updateCell(x, y);
+            if (board[y][x].flag) {
+                flagCount++;
+                if (flagCount === MINES) {
+                    checkWin();
+                }
+            } else {
+                flagCount--;
+            }
+        }
+
+        function reveal(x, y) {
+            if (board[y][x].flag || board[y][x].revealed) return;
+
+            board[y][x].revealed = true;
+            revealedCount++;
+
+            if (board[y][x].mine) {
+                gameOver();
+                return;
+            }
+
+            updateCell(x, y);
+
+            if (board[y][x].count === 0) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    for (let dy = -1; dy <= 1; dy++) {
+                        if (0 <= x + dx && x + dx < SIZE && 0 <= y + dy && y + dy < SIZE && !board[y + dy][x + dx].revealed) {
+                            reveal(x + dx, y + dy);
+                        }
+                    }
+                }
+            }
+
+            if (revealedCount === SIZE * SIZE - MINES) {
+                gameClear();
+            }
+        }
+
+        function updateCell(x, y) {
+            const td = document.getElementById('board').rows[y].cells[x];
+            if (board[y][x].revealed) {
+                td.classList.remove('hidden');
+                if (board[y][x].mine) {
+                    td.textContent = '💣';
+                    td.classList.add('mine');
+                } else if (board[y][x].count > 0) {
+                    //console.log(board[y][x].count);
+                    td.textContent = board[y][x].count;
+                }
+            } else {
+                td.classList.add('hidden');
+                if (board[y][x].flag) {
+                    td.textContent = '🚩';
+                    td.classList.add('flag');
+                } else {
+                    td.textContent = '';
+                    td.classList.remove('flag');
+                }
+            }
+        }
+
+        function gameOver() {
+            document.getElementById('status').textContent = 'Game Over';
+            document.getElementById('retry').style.display = 'block';
+            revealAll();
+        }
+
+        function gameClear() {
+            document.getElementById('status').textContent = 'Clear!';
+            document.getElementById('retry').style.display = 'block';
+            revealAll();
+        }
+
+        function checkWin() {
+            for (let y = 0; y < SIZE; y++) {
+                for (let x = 0; x < SIZE; x++) {
+                    if (board[y][x].mine !== board[y][x].flag) return;
+                }
+            }
+            gameClear();
+        }
+
+        function revealAll() {
+            for (let y = 0; y < SIZE; y++) {
+                for (let x = 0; x < SIZE; x++) {
+                    board[y][x].revealed = true;
+                    updateCell(x, y);
+                }
+            }
+        }
+
+        window.onload = function () {
+            init();
+        };
+    </script>
+</body>
+
+</html>
